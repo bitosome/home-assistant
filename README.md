@@ -15,6 +15,13 @@ npm run lint
 
 Add the compiled card to your Home Assistant resources and configure it in the dashboard:
 
+### Downloading the compiled card
+
+Each push to this repository triggers a GitHub Actions workflow that builds the TypeScript source and
+produces `dist/living-room-card.js` as an artifact. Download the artifact from the latest workflow run
+and copy the file into your Home Assistant `www/` folder. Then add it as a JavaScript resource in your
+configuration.
+
 ```yaml
 type: custom:living-room-card
 main_entity: switch.living_room_light_group
