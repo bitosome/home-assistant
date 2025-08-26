@@ -1,2 +1,5 @@
 node_modules/
-dist/
+
+# Include compiled output so users can access the built card without
+# needing to run the TypeScript build step.
+# Source maps are still generated in the dist folder for debugging.
