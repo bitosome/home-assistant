@@ -9,7 +9,10 @@
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "experimentalDecorators": true,
+    "useDefineForClassFields": false,
+    "skipLibCheck": true
   },
   "include": ["src/**/*.ts"]
 }
