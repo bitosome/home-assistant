@@ -8,54 +8,37 @@ class LRPanelNativeCard extends HTMLElement {
 
   static getStubConfig() {
     return {
-      title: "Living room",
-      tile_height: 80,              // height of every tile (main, AC, Thermo, switches)
-      badge_size: 22,               // badge circle size (px)
-      badge_icon_size: 14,          // badge icon size (px)
-      card_shadow_color: "#000000", // outer card shadow color
-      card_shadow_intensity: 0.5,   // 0..1 (alpha)
+      title: "Living room",          // ha-card header
+      tile_height: 80,               // height of every tile (main, AC, Thermo, switches)
+      badge_size: 22,                // badge circle size (px)
+      badge_icon_size: 14,           // badge icon size (px)
+      card_shadow_color: "#000000",  // outer card shadow color
+      card_shadow_intensity: 0.5,    // 0..1 (alpha)
       header: {
         layout: "all", // all | main_ac | main_thermo | main_only
         main_entity: "switch.living_room_light_group",
-        main_name: "Living room",
+        main_name: "Living room", // text on main tile (bottom-left)
         main_icon: "mdi:sofa-outline",
         temp_sensor: "sensor.kitchen_living_room_temparature_average",
         humidity_sensor: "sensor.kitchen_living_room_humidity_average",
         ac_entity: "climate.living_room_ac",
         thermo_entity: "climate.thermostat_5_7_group",
-        // Optional extra badges on the main tile (bottom-right stack)
-        // { type: "lock"|"gate", entity: "...", tap_entity?: "...", hold_entity?: "..." }
+        // Additional badges for the main tile (bottom-right)
+        // { type: "lock" | "gate", entity: "...", tap_entity?: "...", hold_entity?: "..." }
         badges: []
       },
-      // Switch grid — explicit rows; each switch can set click/hold entities and smart_switch glow
-      // switch_rows: [ [ { tap_entity, hold_entity, name, icon, smart_switch }, ... ], [ ... ] ]
-      switch_rows: [],
-      // Legacy fallback (auto chunk in 3s). Kept for compatibility.
-      switches: []
+      // Explicit switch rows only (no legacy). Each item:
+      // { tap_entity, hold_entity, name, icon, type } where type in ["switch","smart_plug"]
+      switch_rows: []
     };
   }
 
   setConfig(config) {
-    // Deep clone
-    const cfg = JSON.parse(JSON.stringify(config || {}));
-
-    // --- Backward compatibility: migrate smart_plug -> smart_switch
-    const migrateRow = (row) => (row || []).map(sw => {
-      if (sw && typeof sw === "object") {
-        if ("smart_plug" in sw && !("smart_switch" in sw)) {
-          sw.smart_switch = !!sw.smart_plug;
-        }
-      }
-      return sw;
-    });
-
-    if (Array.isArray(cfg.switch_rows)) {
-      cfg.switch_rows = cfg.switch_rows.map(migrateRow);
-    } else if (Array.isArray(cfg.switches)) {
-      cfg.switches = migrateRow(cfg.switches);
-    }
-
-    this._config = cfg;
+    // No migration/back-compat: accept only the new structure
+    this._config = JSON.parse(JSON.stringify(config || LRPanelNativeCard.getStubConfig()));
+    if (!this._config.header) this._config.header = {};
+    if (!Array.isArray(this._config.header.badges)) this._config.header.badges = [];
+    if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
     this._render();
   }
 
@@ -74,42 +57,27 @@ class LRPanelNativeCard extends HTMLElement {
   _render() {
     if (!this._config) return;
 
-    const base = LRPanelNativeCard.getStubConfig();
-    const c = { ...base, ...this._config };
-    const h = { ...base.header, ...(c.header || {}) };
+    const c = { ...LRPanelNativeCard.getStubConfig(), ...this._config };
+    const h = { ...LRPanelNativeCard.getStubConfig().header, ...(c.header || {}) };
 
     // effective metrics
     const tileH = Number(c.tile_height) || 80;
     const badgeSize = Number(c.badge_size) || 22;
     const badgeIcon = Number(c.badge_icon_size) || 14;
 
-    // card shadow color (rgba) from color + intensity
+    // card shadow rgba
     const panelShadowColor = this._rgbaFromColor(c.card_shadow_color, c.card_shadow_intensity);
-
-    // rows: prefer explicit rows; else transform legacy `switches`
-    const rows =
-      Array.isArray(c.switch_rows) && c.switch_rows.length
-        ? c.switch_rows
-        : this._chunk(Array.isArray(c.switches) ? c.switches : [], 3)
-            .map(row => row.map(sw => ({
-              tap_entity: sw.tap_entity || sw.entity || "",
-              hold_entity: sw.hold_entity || sw.entity || "",
-              name: sw.name || "",
-              icon: sw.icon || "",
-              smart_switch: !!(sw.smart_switch ?? sw.smart_plug) // migrate on the fly
-            })));
 
     this.shadowRoot.innerHTML = `
       <style>
         :host { display:block; }
         .metrics, .metrics * { box-sizing: border-box; }
 
-        /* dynamic metrics via CSS vars */
         .metrics {
           --tile-h:${tileH}px;
           --badge:${badgeSize}px;
           --badge-icon:${badgeIcon}px;
-          --ac-therm-icon: 50px; /* fixed icon size per request */
+          --ac-therm-icon: 50px; /* fixed icon size */
         }
 
         ha-card {
@@ -192,30 +160,31 @@ class LRPanelNativeCard extends HTMLElement {
           width: var(--tile-h); height: var(--tile-h);
           aspect-ratio: 1 / 1;
           border-radius: 12px;
-          padding: 0;
           background: var(--card-background-color);
           backdrop-filter: blur(10px);
           transition: transform 0.18s ease, box-shadow 0.28s ease, filter 0.12s ease;
           box-shadow: 0 6px 18px rgba(0,0,0,0.10);
           overflow: hidden;
+          /* Perfect centering */
+          display: grid;
+          place-items: center;
         }
 
-        /* strict centering wrapper */
         .center-xy {
-          position: absolute;
-          left: 50%; top: 50%;
-          transform: translate(-50%, -50%);
+          position: static;
+          transform: none;
           display: flex; align-items: center; justify-content: center;
           pointer-events: none; user-select: none; line-height: 0;
         }
 
-        /* Fixed icon sizes + ensure HA respects size */
         .ac-fan, .thermo-icon {
           width: var(--ac-therm-icon);
           height: var(--ac-therm-icon);
           --mdc-icon-size: var(--ac-therm-icon);
           display: block;
+          margin: 0; padding: 0; line-height: 0;
           transform-origin: 50% 50%;
+          pointer-events: none;
         }
 
         /* AC mode badge (top-right) */
@@ -260,7 +229,7 @@ class LRPanelNativeCard extends HTMLElement {
         .switch-tile .name { font-weight: 600; font-size: 12px; }
         .switch-icon { width: 28px; height: 28px; color: var(--secondary-text-color); line-height:0; }
 
-        /* ON style */
+        /* ON base style */
         .switch-tile.on {
           background: var(--primary-color);
           color: var(--primary-background-color);
@@ -274,7 +243,7 @@ class LRPanelNativeCard extends HTMLElement {
         }
         .switch-tile.on .switch-icon { color: var(--primary-background-color); }
 
-        /* Smart switch glow (when ON) */
+        /* Smart plug: animated band + GREEN glow (not yellow) */
         @keyframes chase {
           0%   { background-position: -150% 0, 0 0; }
           50%  { background-position: 50% 0, 0 0; }
@@ -287,6 +256,13 @@ class LRPanelNativeCard extends HTMLElement {
           background-size: 30% 100%, 100% 100%;
           background-repeat: no-repeat;
           animation: chase 2s linear infinite;
+
+          /* Override the yellow base glow with GREEN */
+          box-shadow:
+            inset 0 6px 14px rgba(0,0,0,0.20),
+            0 18px 40px rgba(0,200,83,0.30),
+            0 6px 18px rgba(0,200,83,0.16);
+          filter: drop-shadow(0 18px 32px rgba(0,200,83,0.22));
         }
 
         .clickable { cursor: pointer; }
@@ -296,7 +272,7 @@ class LRPanelNativeCard extends HTMLElement {
         <div class="metrics">
           <div class="root">
             ${this._renderHeaderRow(h)}
-            ${this._renderSwitchRows(rows)}
+            ${this._renderSwitchRows(c.switch_rows)}
           </div>
         </div>
       </ha-card>
@@ -404,17 +380,18 @@ class LRPanelNativeCard extends HTMLElement {
   }
 
   _renderSwitchTile(sw) {
-    const tap = sw.tap_entity || sw.entity || "";
-    const hold = sw.hold_entity || sw.entity || tap || "";
+    const tap = sw.tap_entity || "";
+    const hold = sw.hold_entity || tap || "";
     const icon = sw.icon || "";
     const name = sw.name || "";
-    const smart = !!(sw.smart_switch ?? sw.smart_plug);
+    const type = (sw.type || "switch").toLowerCase(); // "switch" | "smart_plug"
+    const isSmart = type === "smart_plug";
     return `
-      <div class="switch-tile clickable ${smart ? 'smart' : ''}"
+      <div class="switch-tile clickable ${isSmart ? 'smart' : ''}"
            data-entity="${tap}"
            data-tap="${tap}"
            data-hold="${hold}"
-           data-smart="${smart ? '1' : '0'}"
+           data-type="${type}"
            data-action="switch-toggle">
         <div class="tile-inner">
           ${icon ? `<ha-icon class="switch-icon" icon="${icon}"></ha-icon>` : ""}
@@ -445,11 +422,10 @@ class LRPanelNativeCard extends HTMLElement {
     if (tSpan) tSpan.textContent = this._fmt2(h.temp_sensor, 2, "°");
     if (hSpan) hSpan.textContent = this._fmt2(h.humidity_sensor, 2, "%");
 
-    // Build badges (bulb + extras)
+    // Badges (bulb + extras)
     const badgesWrap = this.shadowRoot.querySelector(".main-badges-br");
     if (badgesWrap) {
       badgesWrap.innerHTML = "";
-
       // Bulb for main entity
       if (h.main_entity) {
         badgesWrap.appendChild(this._makeBadge({
@@ -457,16 +433,14 @@ class LRPanelNativeCard extends HTMLElement {
           tap_entity: h.main_entity, hold_entity: h.main_entity, icon: "mdi:lightbulb"
         }));
       }
-
-      // Extra badges (locks, gates)
+      // Extra badges
       (Array.isArray(h.badges) ? h.badges : []).forEach(b => {
-        const kind = (b.type || "").toLowerCase();
-        const entity = b.entity || "";
-        if (!entity) return;
+        if (!b || !b.entity) return;
         badgesWrap.appendChild(this._makeBadge({
-          kind, entity,
-          tap_entity: b.tap_entity || entity,
-          hold_entity: b.hold_entity || entity
+          kind: (b.type || "").toLowerCase(),
+          entity: b.entity,
+          tap_entity: b.tap_entity || b.entity,
+          hold_entity: b.hold_entity || b.entity
         }));
       });
     }
@@ -697,7 +671,6 @@ class LRPanelNativeCard extends HTMLElement {
     const next = (mode === "off") ? "heat" : "off";
     this._hass.callService("climate", "set_hvac_mode", { entity_id: entityId, hvac_mode: next });
   }
-  _chunk(arr, size) { const out = []; for (let i = 0; i < arr.length; i += size) out.push(arr.slice(i, i + size)); return out; }
   _rgbaFromColor(color, alpha = 0.5) {
     const a = Math.max(0, Math.min(1, Number(alpha) || 0));
     if (!color || typeof color !== "string") return `rgba(0,0,0,${a})`;
@@ -717,7 +690,7 @@ class LRPanelNativeCard extends HTMLElement {
   }
 
   static getConfigElement() {
-    return document.createElement("lr-panel-native-card-editor");
+    return document.createElement("bitosome-room-card-editor");
   }
 }
 
@@ -725,22 +698,11 @@ class LRPanelNativeCard extends HTMLElement {
 class LRPanelNativeCardEditor extends HTMLElement {
   setConfig(config) {
     const caret = this._getCaretInfo();
-    const str = JSON.stringify(config || LRPanelNativeCard.getStubConfig());
-    this._configStr = str;
-    this._config = JSON.parse(str);
-
-    // migrate smart_plug -> smart_switch in editor state too
-    if (Array.isArray(this._config.switch_rows)) {
-      this._config.switch_rows = this._config.switch_rows.map(row =>
-        (row || []).map(sw => {
-          if (sw && typeof sw === "object") {
-            if ("smart_plug" in sw && !("smart_switch" in sw)) sw.smart_switch = !!sw.smart_plug;
-          }
-          return sw;
-        })
-      );
-    }
-
+    // No migration/back-compat
+    this._config = JSON.parse(JSON.stringify(config || LRPanelNativeCard.getStubConfig()));
+    if (!this._config.header) this._config.header = {};
+    if (!Array.isArray(this._config.header.badges)) this._config.header.badges = [];
+    if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
     this._render();
     this._restoreCaret(caret);
   }
@@ -748,41 +710,35 @@ class LRPanelNativeCardEditor extends HTMLElement {
   _render() {
     const c = this._config || LRPanelNativeCard.getStubConfig();
     const h = c.header || {};
-    const switchRows = (Array.isArray(c.switch_rows) && c.switch_rows.length)
-      ? c.switch_rows
-      : this._chunk(Array.isArray(c.switches) ? c.switches : [], 3)
-          .map(row => row.map(sw => ({
-            tap_entity: sw.tap_entity || sw.entity || "",
-            hold_entity: sw.hold_entity || sw.entity || "",
-            name: sw.name || "",
-            icon: sw.icon || "",
-            smart_switch: !!(sw.smart_switch ?? sw.smart_plug)
-          })));
+    const switchRows = Array.isArray(c.switch_rows) ? c.switch_rows : [];
     const headerBadges = Array.isArray(h.badges) ? h.badges : [];
 
     this.innerHTML = `
       <style>
         .row { display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom:8px; }
         .row-1 { display:grid; grid-template-columns: 1fr; gap:12px; margin-bottom:8px; }
-        .switch-row, .badge-row { border:1px dashed var(--divider-color); border-radius:8px; padding:8px; margin-bottom:8px; }
-        .switch-item { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr auto auto; gap:8px; align-items:center; margin-bottom:6px; }
+        .section { border:1px dashed var(--divider-color); border-radius:8px; padding:10px; margin:10px 0; }
+        .switch-item { display:grid; grid-template-columns: 1.2fr 1.2fr 1fr 1fr 1fr auto; gap:8px; align-items:center; margin-bottom:6px; }
         .badge-item  { display:grid; grid-template-columns: 1fr 1.2fr 1.2fr 1.2fr auto; gap:8px; align-items:center; margin-bottom:6px; }
         label { font-size:12px; color: var(--secondary-text-color); display:block; margin-bottom:2px; }
         input, select { width:100%; box-sizing:border-box; padding:6px 8px; border:1px solid var(--divider-color); border-radius:8px; background: var(--card-background-color); color: var(--primary-text-color); }
         button { padding:6px 10px; border-radius:8px; border:1px solid var(--divider-color); background: var(--ha-card-background, var(--card-background-color)); cursor:pointer; }
         .muted { color: var(--secondary-text-color); font-size:12px; margin:6px 0; }
-        .row-actions { display:flex; gap:8px; margin-top:6px; }
-        .checkbox { display:flex; align-items:center; gap:6px; }
+        .row-actions { display:flex; gap:8px; margin-top:6px; flex-wrap: wrap; }
       </style>
 
       <div class="row-1">
         <div>
-          <label>Title</label>
-          <input id="title" value="${c.title || ""}">
+          <label>Panel title (ha-card header)</label>
+          <input id="title" value="${c.title ?? ""}">
         </div>
       </div>
 
       <div class="row">
+        <div>
+          <label>Main tile text (bottom-left)</label>
+          <input id="main_name" value="${h.main_name ?? ""}" placeholder="Living room">
+        </div>
         <div>
           <label>Header layout</label>
           <select id="layout">
@@ -791,10 +747,6 @@ class LRPanelNativeCardEditor extends HTMLElement {
             <option value="main_thermo" ${h.layout === "main_thermo" ? "selected" : ""}>Main + Thermostat</option>
             <option value="main_only" ${h.layout === "main_only" ? "selected" : ""}>Main only</option>
           </select>
-        </div>
-        <div>
-          <label>Main name</label>
-          <input id="main_name" value="${h.main_name || ""}">
         </div>
       </div>
 
@@ -856,20 +808,24 @@ class LRPanelNativeCardEditor extends HTMLElement {
         </div>
       </div>
 
-      <div class="muted">Main badges — add locks/gates to the main tile (bottom-right). Each can have Click/Long-press entities.</div>
-      <div id="badges" class="badge-row"></div>
-      <div class="row-actions">
-        <button id="add-badge-lock">+ Add lock</button>
-        <button id="add-badge-gate">+ Add gate</button>
+      <div class="section">
+        <div class="muted"><b>Main badges</b> — add/remove lock/gate badges on the main tile (bottom-right). Each can have its own Click/Long-press entity.</div>
+        <div id="badges"></div>
+        <div class="row-actions">
+          <button id="add-badge-lock">+ Add lock</button>
+          <button id="add-badge-gate">+ Add gate</button>
+        </div>
       </div>
 
-      <div class="muted">Switch rows — each item can set Click, Long-press and Smart switch glow.</div>
-      <div id="rows"></div>
-      <div class="row-actions"><button id="add-row">+ Add row</button></div>
+      <div class="section">
+        <div class="muted"><b>Switch rows</b> — each item has Click, Long-press, Name, Icon and <i>Type</i> (Switch / Smart plug). Smart plug uses the animated GREEN glow when ON.</div>
+        <div id="rows"></div>
+        <div class="row-actions"><button id="add-row">+ Add row</button></div>
+      </div>
     `;
 
     // Render header badges
-    const bwrap = this.querySelector("#badges");
+    const badgesContainer = this.querySelector("#badges");
     headerBadges.forEach((b, idx) => {
       const row = document.createElement("div");
       row.className = "badge-item";
@@ -886,7 +842,7 @@ class LRPanelNativeCardEditor extends HTMLElement {
         <div><label>Long-press entity</label><input data-idx="${idx}" data-k="hold_entity" value="${b.hold_entity || ""}" placeholder="optional (defaults to entity)"></div>
         <div><button class="remove-badge" data-idx="${idx}">Remove</button></div>
       `;
-      bwrap.appendChild(row);
+      badgesContainer.appendChild(row);
     });
 
     // Quick add badge buttons
@@ -901,7 +857,7 @@ class LRPanelNativeCardEditor extends HTMLElement {
       this._render(); this._emit();
     });
 
-    bwrap.addEventListener("click", (e) => {
+    badgesContainer.addEventListener("click", (e) => {
       const rem = e.target.closest(".remove-badge");
       if (rem) {
         const i = Number(rem.getAttribute("data-idx"));
@@ -909,7 +865,7 @@ class LRPanelNativeCardEditor extends HTMLElement {
         this._render(); this._emit();
       }
     });
-    bwrap.addEventListener("input", (e) => {
+    badgesContainer.addEventListener("input", (e) => {
       const el = e.target;
       const i = Number(el.getAttribute("data-idx"));
       const k = el.getAttribute("data-k");
@@ -921,10 +877,10 @@ class LRPanelNativeCardEditor extends HTMLElement {
     });
 
     // Render switch rows
-    const container = this.querySelector("#rows");
+    const rowsContainer = this.querySelector("#rows");
     (switchRows || []).forEach((row, rIdx) => {
       const wrap = document.createElement("div");
-      wrap.className = "switch-row";
+      wrap.className = "section";
       wrap.innerHTML = `
         <div class="muted">Row ${rIdx + 1} (${(row||[]).length} item${(row||[]).length===1?"":"s"})</div>
         <div class="items"></div>
@@ -942,21 +898,24 @@ class LRPanelNativeCardEditor extends HTMLElement {
           <div><label>Long-press entity</label><input data-r="${rIdx}" data-i="${iIdx}" data-k="hold_entity" value="${sw.hold_entity || ""}" placeholder="any entity"></div>
           <div><label>Name</label><input data-r="${rIdx}" data-i="${iIdx}" data-k="name" value="${sw.name || ""}" placeholder="Display name"></div>
           <div><label>Icon</label><input data-r="${rIdx}" data-i="${iIdx}" data-k="icon" value="${sw.icon || ""}" placeholder="mdi:..."></div>
-          <div class="checkbox">
-            <input type="checkbox" id="smart_${rIdx}_${iIdx}" data-r="${rIdx}" data-i="${iIdx}" data-k="smart_switch" ${sw.smart_switch ? "checked" : ""}>
-            <label for="smart_${rIdx}_${iIdx}">Smart switch glow</label>
+          <div>
+            <label>Type</label>
+            <select data-r="${rIdx}" data-i="${iIdx}" data-k="type">
+              <option value="switch" ${((sw.type||"switch")==="switch")?"selected":""}>Switch</option>
+              <option value="smart_plug" ${((sw.type||"switch")==="smart_plug")?"selected":""}>Smart plug</option>
+            </select>
           </div>
           <div><button data-r="${rIdx}" data-i="${iIdx}" class="remove-item">Remove</button></div>
         `;
         items.appendChild(item);
       });
-      container.appendChild(wrap);
+      rowsContainer.appendChild(wrap);
     });
 
-    // debounced emit
-    const debouncedEmit = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => this._emit(), 150); }; })();
+    // Debounced emit
+    const debouncedEmit = (() => { let t; return () => { clearTimeout(t); t = setTimeout(() => this._emit(), 120); }; })();
 
-    // primitive updates
+    // Primitive updates
     [
       "title","layout","main_name","main_entity","main_icon",
       "temp_sensor","humidity_sensor","ac_entity","thermo_entity",
@@ -978,59 +937,53 @@ class LRPanelNativeCardEditor extends HTMLElement {
       });
     });
 
-    // rows actions
+    // Rows actions
     this.querySelector("#add-row").addEventListener("click", () => {
       if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
       this._config.switch_rows.push([]);
       this._render(); this._emit();
     });
 
-    container.addEventListener("click", (e) => {
+    rowsContainer.addEventListener("click", (e) => {
       const add = e.target.closest(".add-item");
       const remItem = e.target.closest(".remove-item");
       const remRow = e.target.closest(".remove-row");
       if (add) {
         const r = Number(add.getAttribute("data-r"));
-        this._ensureRows();
-        this._config.switch_rows[r].push({ tap_entity: "", hold_entity: "", name: "", icon: "", smart_switch: false });
+        if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
+        this._config.switch_rows[r].push({ tap_entity: "", hold_entity: "", name: "", icon: "", type: "switch" });
         this._render(); this._emit();
       }
       if (remItem) {
         const r = Number(remItem.getAttribute("data-r"));
         const i = Number(remItem.getAttribute("data-i"));
-        this._ensureRows();
         this._config.switch_rows[r].splice(i, 1);
         this._render(); this._emit();
       }
       if (remRow) {
         const r = Number(remRow.getAttribute("data-r"));
-        this._ensureRows();
         this._config.switch_rows.splice(r, 1);
         this._render(); this._emit();
       }
     });
 
-    container.addEventListener("input", (e) => {
-      const inp = e.target.closest("input");
-      if (!inp) return;
-      const r = Number(inp.getAttribute("data-r"));
-      const i = Number(inp.getAttribute("data-i"));
-      const k = inp.getAttribute("data-k");
-      this._ensureRows();
+    rowsContainer.addEventListener("input", (e) => {
+      const el = e.target;
+      const r = Number(el.getAttribute("data-r"));
+      const i = Number(el.getAttribute("data-i"));
+      const k = el.getAttribute("data-k");
+      if (!Number.isInteger(r) || !Number.isInteger(i) || !k) return;
+      if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
       if (!this._config.switch_rows[r]) this._config.switch_rows[r] = [];
-      if (!this._config.switch_rows[r][i]) this._config.switch_rows[r][i] = { tap_entity:"", hold_entity:"", name:"", icon:"", smart_switch:false };
-
-      if (k === "smart_switch") {
-        this._config.switch_rows[r][i][k] = inp.checked;
+      if (!this._config.switch_rows[r][i]) this._config.switch_rows[r][i] = { tap_entity:"", hold_entity:"", name:"", icon:"", type:"switch" };
+      if (k === "type") {
+        this._config.switch_rows[r][i].type = el.value === "smart_plug" ? "smart_plug" : "switch";
       } else {
-        this._config.switch_rows[r][i][k] = inp.value;
+        this._config.switch_rows[r][i][k] = el.value;
       }
       this._emit();
     });
   }
-
-  _ensureRows() { if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = []; }
-  _chunk(arr, size) { const out=[]; for(let i=0;i<arr.length;i+=size) out.push(arr.slice(i,i+size)); return out; }
 
   _emit() {
     const str = JSON.stringify(this._config);
@@ -1040,12 +993,18 @@ class LRPanelNativeCardEditor extends HTMLElement {
     }));
   }
 
+  // Caret helpers
   _getCaretInfo() {
     const el = this.querySelector("input:focus, textarea:focus, select:focus");
     if (!el) return null;
     return {
       id: el.id || null,
-      dataset: { r: el.getAttribute("data-r"), i: el.getAttribute("data-i"), k: el.getAttribute("data-k"), idx: el.getAttribute("data-idx") },
+      dataset: {
+        r: el.getAttribute("data-r"),
+        i: el.getAttribute("data-i"),
+        k: el.getAttribute("data-k"),
+        idx: el.getAttribute("data-idx")
+      },
       start: el.selectionStart, end: el.selectionEnd
     };
   }
@@ -1068,12 +1027,12 @@ class LRPanelNativeCardEditor extends HTMLElement {
 }
 
 /* -------- Register elements (safe re-register) -------- */
-if (!customElements.get("lr-panel-native-card")) customElements.define("lr-panel-native-card", LRPanelNativeCard);
-if (!customElements.get("lr-panel-native-card-editor")) customElements.define("lr-panel-native-card-editor", LRPanelNativeCardEditor);
+if (!customElements.get("bitosome-room-card")) customElements.define("bitosome-room-card", LRPanelNativeCard);
+if (!customElements.get("bitosome-room-card-editor")) customElements.define("bitosome-room-card-editor", LRPanelNativeCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
-  type: "lr-panel-native-card",
-  name: "Living Room Panel (native)",
-  description: "Exact reference layout with native HA resources (no card_mod / button-card)."
+  type: "bitosome-room-card",
+  name: "Room card",
+  description: "Room control card "
 });
