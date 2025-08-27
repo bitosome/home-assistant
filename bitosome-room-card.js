@@ -1,4 +1,4 @@
-class LRPanelNativeCard extends HTMLElement {
+class bitosomeRoomCard extends HTMLElement {
   constructor() {
     super();
     this.attachShadow({ mode: "open" });
@@ -35,7 +35,7 @@ class LRPanelNativeCard extends HTMLElement {
 
   setConfig(config) {
     // No migration/back-compat: accept only the new structure
-    this._config = JSON.parse(JSON.stringify(config || LRPanelNativeCard.getStubConfig()));
+    this._config = JSON.parse(JSON.stringify(config || bitosomeRoomCard.getStubConfig()));
     if (!this._config.header) this._config.header = {};
     if (!Array.isArray(this._config.header.badges)) this._config.header.badges = [];
     if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
@@ -57,8 +57,8 @@ class LRPanelNativeCard extends HTMLElement {
   _render() {
     if (!this._config) return;
 
-    const c = { ...LRPanelNativeCard.getStubConfig(), ...this._config };
-    const h = { ...LRPanelNativeCard.getStubConfig().header, ...(c.header || {}) };
+    const c = { ...bitosomeRoomCard.getStubConfig(), ...this._config };
+    const h = { ...bitosomeRoomCard.getStubConfig().header, ...(c.header || {}) };
 
     // effective metrics
     const tileH = Number(c.tile_height) || 80;
@@ -414,7 +414,7 @@ class LRPanelNativeCard extends HTMLElement {
   // ---------- DYNAMIC STATE ----------
   _updateDynamic() {
     if (!this._hass || !this._config) return;
-    const h = { ...LRPanelNativeCard.getStubConfig().header, ...(this._config.header || {}) };
+    const h = { ...bitosomeRoomCard.getStubConfig().header, ...(this._config.header || {}) };
 
     // Main chip (temp/hum)
     const tSpan = this.shadowRoot.querySelector(".chip-tr .tval");
@@ -695,11 +695,11 @@ class LRPanelNativeCard extends HTMLElement {
 }
 
 /* ----------------- Editor ----------------- */
-class LRPanelNativeCardEditor extends HTMLElement {
+class bitosomeRoomCardEditor extends HTMLElement {
   setConfig(config) {
     const caret = this._getCaretInfo();
     // No migration/back-compat
-    this._config = JSON.parse(JSON.stringify(config || LRPanelNativeCard.getStubConfig()));
+    this._config = JSON.parse(JSON.stringify(config || bitosomeRoomCard.getStubConfig()));
     if (!this._config.header) this._config.header = {};
     if (!Array.isArray(this._config.header.badges)) this._config.header.badges = [];
     if (!Array.isArray(this._config.switch_rows)) this._config.switch_rows = [];
@@ -708,7 +708,7 @@ class LRPanelNativeCardEditor extends HTMLElement {
   }
 
   _render() {
-    const c = this._config || LRPanelNativeCard.getStubConfig();
+    const c = this._config || bitosomeRoomCard.getStubConfig();
     const h = c.header || {};
     const switchRows = Array.isArray(c.switch_rows) ? c.switch_rows : [];
     const headerBadges = Array.isArray(h.badges) ? h.badges : [];
@@ -1027,8 +1027,8 @@ class LRPanelNativeCardEditor extends HTMLElement {
 }
 
 /* -------- Register elements (safe re-register) -------- */
-if (!customElements.get("bitosome-room-card")) customElements.define("bitosome-room-card", LRPanelNativeCard);
-if (!customElements.get("bitosome-room-card-editor")) customElements.define("bitosome-room-card-editor", LRPanelNativeCardEditor);
+if (!customElements.get("bitosome-room-card")) customElements.define("bitosome-room-card", bitosomeRoomCard);
+if (!customElements.get("bitosome-room-card-editor")) customElements.define("bitosome-room-card-editor", bitosomeRoomCardEditor);
 
 window.customCards = window.customCards || [];
 window.customCards.push({
